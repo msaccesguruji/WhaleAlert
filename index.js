@@ -26,22 +26,18 @@ app.post('/login', async (req, res) => {
     );
     page.on('response', (res) => console.log(`Response: ${res.url()} - ${res.status()}`));
 
-    await page.setUserAgent(
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-    );
-
     await page.goto('https://app.sellerassistant.app/login', {
       waitUntil: 'domcontentloaded',
       timeout: 60000,
     });
 
-    await page.waitForSelector('#input-1', { timeout: 60000 });
+    await page.waitForSelector('#input-1', { timeout: 20000 });
     await page.type('#input-1', email);
-    await page.waitForSelector('#input-3', { timeout: 60000 });
+    await page.waitForSelector('#input-3', { timeout: 20000 });
     await page.type('#input-3', password);
 
     await page.click('button[type="submit"]');
-    await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 60000 });
+    await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 20000 });
 
     const cookies = await page.cookies();
     await browser.close();
