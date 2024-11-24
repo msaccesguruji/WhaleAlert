@@ -48,7 +48,7 @@ app.post('/login', async (req, res) => {
 });
 
 // Start the server on port 3000
-const PORT = 13000; // Likely set to 13000 in your code
+const PORT = 3000; // Likely set to 13000 in your code
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`Server is running on http://0.0.0.0:${PORT}`);
 });
