@@ -32,6 +32,7 @@ app.post('/login', async (req, res) => {
     // Navigate to the login page
     await page.goto('https://app.sellerassistant.app/login', {
       waitUntil: 'domcontentloaded',
+      timeout: 60000
     });
 
     // Input email
