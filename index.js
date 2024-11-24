@@ -1,5 +1,5 @@
 const express = require('express');
-const puppeteer = require('puppeteer');
+const puppeteer = require('puppeteer@latest');
 const cors = require('cors');
 
 // Initialize Express app
