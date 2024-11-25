@@ -7,6 +7,7 @@ app.use(express.json());
 app.use(cors());
 
 app.post('/login', async (req, res) => {
+  let browser;
   try {
     const { email, password } = req.body;
 
@@ -14,14 +15,14 @@ app.post('/login', async (req, res) => {
       return res.status(400).json({ error: 'Missing email or password' });
     }
 
-    const browser = await puppeteer.launch({
-      headless: true, // Set to true in production
+    browser = await puppeteer.launch({
+      headless: false, // Set to true in production
       args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
     });
 
     const page = await browser.newPage();
 
-    // Log requests and responses for debugging
+    // Event listeners for debugging
     page.on('requestfailed', (req) =>
       console.error(`Request failed: ${req.url()} - ${req.failure()?.errorText}`)
     );
@@ -29,33 +30,33 @@ app.post('/login', async (req, res) => {
       console.log(`Response: ${response.url()} - ${response.status()}`)
     );
 
-    // Navigate to the login page
+    // Set navigation timeout to avoid premature timeout errors
+    await page.setDefaultNavigationTimeout(60000); // Set timeout to 60 seconds
+
     await page.goto('https://app.sellerassistant.app/login', {
-      waitUntil: 'domcontentloaded',
-      timeout: 60000
+      waitUntil: 'domcontentloaded', // Load page without waiting for all resources
     });
 
-    // Input email
-    await page.waitForSelector('#input-1', { visible: true, timeout: 10000 });
-    await page.type('#input-1', email);
+    await page.waitForSelector('#input-1', { visible: true, timeout: 15000 });
+    await page.type('#input-1', email, { delay: 50 });
 
-    // Input password
-    await page.waitForSelector('#input-3', { visible: true, timeout: 10000 });
-    await page.type('#input-3', password);
+    await page.waitForSelector('#input-3', { visible: true, timeout: 15000 });
+    await page.type('#input-3', password, { delay: 50 });
 
-    // Ensure the submit button is available and click
-    await page.waitForSelector('button[type="submit"]', { visible: true, timeout: 10000 });
-    await page.evaluate(() => {
-      const submitButton = document.querySelector('button[type="submit"]');
-      if (submitButton) {
-        submitButton.click();
-      }
-    });
+    await page.waitForSelector('button[type="submit"]', { visible: true, timeout: 15000 });
+    await page.click('button[type="submit"]');
 
-    // Wait for navigation after login
-    await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 30000 });
+    // Attempt to wait for navigation
+    try {
+      await page.waitForNavigation({
+        waitUntil: 'networkidle2',
+        timeout: 30000, // 30 seconds timeout for navigation
+      });
+    } catch (navError) {
+      console.warn('Navigation timeout exceeded, returning available cookies...');
+    }
 
-    // Collect cookies after successful login
+    // Retrieve cookies at this point, whether navigation succeeded or not
     const cookies = await page.cookies();
     await browser.close();
 
@@ -63,8 +64,20 @@ app.post('/login', async (req, res) => {
   } catch (error) {
     console.error('Error in login:', error.message);
 
-    // Capture detailed error output
-    if (error.stack) console.error(error.stack);
+    // If there's an error, attempt to retrieve cookies before closing the browser
+    if (browser) {
+      try {
+        const pages = await browser.pages();
+        if (pages.length > 0) {
+          const cookies = await pages[0].cookies();
+          await browser.close();
+          return res.status(200).json({ cookies, error: error.message });
+        }
+      } catch (cookieError) {
+        console.error('Error retrieving cookies after failure:', cookieError.message);
+      }
+      await browser.close();
+    }
 
     res.status(500).json({ error: error.message });
   }
