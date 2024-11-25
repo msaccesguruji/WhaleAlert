@@ -8,6 +8,8 @@ app.use(cors());
 
 app.post('/login', async (req, res) => {
   let browser;
+  let attempts = 0;
+  const maxAttempts = 3;
 
   try {
     const { email, password } = req.body;
@@ -16,57 +18,69 @@ app.post('/login', async (req, res) => {
       return res.status(400).json({ error: 'Missing email or password' });
     }
 
-    browser = await puppeteer.launch({
-      headless: true, // Use headless mode in production
-      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
-    });
+    while (attempts < maxAttempts) {
+      attempts++;
+      try {
+        browser = await puppeteer.launch({
+          headless: true, // Set to true in production
+          args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
+        });
 
-    const page = await browser.newPage();
+        const page = await browser.newPage();
 
-    // Log requests and responses for debugging
-    page.on('requestfailed', (req) =>
-      console.error(`Request failed: ${req.url()} - ${req.failure()?.errorText}`)
-    );
-    page.on('response', (response) =>
-      console.log(`Response: ${response.url()} - ${response.status()}`)
-    );
+        // Log requests and responses for debugging
+        page.on('requestfailed', (req) =>
+          console.error(`Request failed: ${req.url()} - ${req.failure()?.errorText}`)
+        );
+        page.on('response', (response) =>
+          console.log(`Response: ${response.url()} - ${response.status()}`)
+        );
 
-    // Navigate to login page
-    await page.goto('https://app.sellerassistant.app/login', { waitUntil: 'domcontentloaded' });
+        // Navigate to the login page
+        await page.goto('https://app.sellerassistant.app/login', {
+          waitUntil: 'domcontentloaded',
+        });
 
-    // Input email
-    await page.waitForSelector('#input-1', { visible: true, timeout: 10000 });
-    await page.type('#input-1', email);
+        // Input email
+        await page.waitForSelector('#input-1', { visible: true, timeout: 10000 });
+        await page.type('#input-1', email);
 
-    // Input password
-    await page.waitForSelector('#input-3', { visible: true, timeout: 10000 });
-    await page.type('#input-3', password);
+        // Input password
+        await page.waitForSelector('#input-3', { visible: true, timeout: 10000 });
+        await page.type('#input-3', password);
 
-    // Click the login button
-    await page.waitForSelector('button[type="submit"]', { visible: true, timeout: 10000 });
-    await page.evaluate(() => {
-      const submitButton = document.querySelector('button[type="submit"]');
-      if (submitButton) {
-        submitButton.click();
+        // Ensure the submit button is available and click
+        await page.waitForSelector('button[type="submit"]', { visible: true, timeout: 10000 });
+        await page.evaluate(() => {
+          const submitButton = document.querySelector('button[type="submit"]');
+          if (submitButton) {
+            submitButton.click();
+          }
+        });
+
+        // Wait for navigation after login
+        await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 30000 });
+
+        // Collect cookies after successful login
+        const cookies = await page.cookies();
+        await browser.close();
+
+        // Return cookies if login is successful
+        return res.status(200).json({ cookies });
+      } catch (error) {
+        console.warn(`Attempt ${attempts} failed: ${error.message}`);
+        if (browser) await browser.close();
+
+        // Retry logic: If max attempts reached, throw error
+        if (attempts >= maxAttempts) {
+          throw error;
+        }
       }
-    });
-
-    // Wait for navigation after login
-    try {
-      await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 30000 });
-    } catch (navError) {
-      console.warn('Navigation timeout exceeded. Returning available cookies...');
     }
-
-    // Collect cookies, even if navigation fails
-    const cookies = await page.cookies();
-
-    await browser.close();
-    res.status(200).json({ cookies });
   } catch (error) {
-    console.error('Error in login:', error.message);
+    console.error('Final error in login:', error.message);
 
-    // Capture cookies before responding with an error
+    // Attempt to return partial cookies, if any
     if (browser) {
       try {
         const pages = await browser.pages();
@@ -77,14 +91,12 @@ app.post('/login', async (req, res) => {
           return res.status(200).json({ cookies });
         }
       } catch (cookieError) {
-        console.warn('Failed to capture cookies during error handling:', cookieError.message);
+        console.warn('Failed to retrieve cookies during error handling:', cookieError.message);
       }
     }
 
-    // Return the error if no cookies are available
+    // If no cookies are available, return an error
     res.status(500).json({ error: error.message });
-  } finally {
-    if (browser) await browser.close();
   }
 });
 
